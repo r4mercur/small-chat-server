@@ -1,10 +1,20 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"github.com/gorilla/websocket"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
+	"log"
 	"net/http"
 	"sync"
+	"time"
 )
+
+type Chat struct {
+	Message string
+}
 
 var (
 	upgrade = websocket.Upgrader{
@@ -17,9 +27,22 @@ var (
 
 	clients      = make(map[*websocket.Conn]bool)
 	clientsMutex = sync.Mutex{}
+	client       *mongo.Client
+	collection   *mongo.Collection
 )
 
-func broadcastMessage(message []byte) {
+func init() {
+	var err error
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	client, err = mongo.Connect(ctx, options.Client().ApplyURI("mongodb://admin:Lw4EGf67a6WJ@localhost:27017"))
+	if err != nil {
+		log.Fatal("Failed to connect to MongoDB: ", err)
+	}
+	collection = client.Database("chatDatabase").Collection("chats")
+}
+
+func broadcastMessage(message []byte) error {
 	clientsMutex.Lock()
 	defer clientsMutex.Unlock()
 	for client := range clients {
@@ -27,10 +50,18 @@ func broadcastMessage(message []byte) {
 			delete(clients, client)
 			err := client.Close()
 			if err != nil {
-				return
+				return errors.New("failed to close client connection")
 			}
 		}
 	}
+
+	chat := Chat{Message: string(message)}
+	_, err := collection.InsertOne(context.TODO(), chat)
+	if err != nil {
+		log.Printf("Failed to insert chat message into MongoDB: %v", err)
+		return err
+	}
+	return nil
 }
 
 func chatHandler(w http.ResponseWriter, r *http.Request) {
@@ -58,7 +89,11 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 			clientsMutex.Unlock()
 			break
 		}
-		broadcastMessage(msg)
+
+		err2 := broadcastMessage(msg)
+		if err2 != nil {
+			log.Fatal(err2)
+		}
 	}
 }
 
