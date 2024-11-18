@@ -13,7 +13,8 @@ import (
 )
 
 type Chat struct {
-	Message string
+	ChatID  string `bson:"chat_id"`
+	Message string `bson:"message"`
 }
 
 var (
@@ -42,7 +43,7 @@ func init() {
 	collection = client.Database("chatDatabase").Collection("chats")
 }
 
-func broadcastMessage(message []byte) error {
+func broadcastMessage(chatID string, message []byte) error {
 	clientsMutex.Lock()
 	defer clientsMutex.Unlock()
 	for client := range clients {
@@ -55,7 +56,7 @@ func broadcastMessage(message []byte) error {
 		}
 	}
 
-	chat := Chat{Message: string(message)}
+	chat := Chat{ChatID: chatID, Message: string(message)}
 	_, err := collection.InsertOne(context.TODO(), chat)
 	if err != nil {
 		log.Printf("Failed to insert chat message into MongoDB: %v", err)
@@ -65,6 +66,12 @@ func broadcastMessage(message []byte) error {
 }
 
 func chatHandler(w http.ResponseWriter, r *http.Request) {
+	chatID := r.URL.Query().Get("chat_id")
+	if chatID == "" {
+		http.Error(w, "chat_id is required", http.StatusBadRequest)
+		return
+	}
+
 	conn, err := upgrade.Upgrade(w, r, nil)
 	if err != nil {
 		return
@@ -90,7 +97,7 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 
-		err2 := broadcastMessage(msg)
+		err2 := broadcastMessage(chatID, msg)
 		if err2 != nil {
 			log.Fatal(err2)
 		}
