@@ -39,6 +39,17 @@ func InitMongoDB() {
 		log.Fatal("Failed to connect to MongoDB: ", err)
 	}
 	Collection = Client.Database("chatDatabase").Collection("chats")
+
+	// Check if the connection is successful by inserting a test document
+	InitCollection(err, ctx)
+}
+
+func InitCollection(err error, ctx context.Context) {
+	_, err = Collection.InsertOne(ctx, map[string]interface{}{"init": true})
+	if err != nil {
+		log.Fatal("Error when creating the collection: ", err)
+	}
+	_, _ = Collection.DeleteOne(ctx, map[string]interface{}{"init": true})
 }
 
 // SaveMessage saves a chat message to MongoDB

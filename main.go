@@ -12,6 +12,9 @@ func main() {
 	// Initialize MongoDB connection
 	database.InitMongoDB()
 
+	// Health check endpoint for the database connection
+	http.HandleFunc("/health", websocket.HealthCheck)
+
 	// Set up HTTP routes
 	http.HandleFunc("/chat", websocket.HandleConnection)
 

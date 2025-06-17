@@ -87,3 +87,12 @@ func HandleConnection(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 }
+
+func HealthCheck(w http.ResponseWriter, r *http.Request) {
+	if err := database.Client.Ping(r.Context(), nil); err != nil {
+		http.Error(w, "Database connection failed", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Database connection is healthy"))
+}

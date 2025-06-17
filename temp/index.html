@@ -8,7 +8,16 @@
         let socket;
 
         let createNewWebSocket = () => {
-            socket = new WebSocket("ws://localhost:8080/chat");
+            const chatId = document.getElementById('chat_id').value;
+
+            if (!chatId) {
+                console.log('Chat ID is required to connect.');
+                return;
+            }
+
+            socket = new WebSocket("ws://localhost:8080/chat?chat_id=" +
+                encodeURIComponent(chatId));
+
 
             socket.onopen = () => {
                 console.log('Socket opened');
@@ -42,6 +51,8 @@
 <body>
     <div>
         <h2>Small chat integration test</h2>
+        <label for="chat_id">Chat-ID:</label>
+        <input type="text" id="chat_id" placeholder="Chat-ID..." />
         <button onclick="createNewWebSocket()">Connect</button>
 
         <label for="message">Message:</label>
