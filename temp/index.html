@@ -46,10 +46,97 @@
         .hidden {
             display: none;
         }
+
+        .message {
+            margin-bottom: 15px;
+            padding: 10px;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+        }
+
+        .message p {
+            margin: 0 0 5px 0;
+        }
+
+        .message-reactions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            margin-top: 5px;
+        }
+
+        .reaction {
+            display: inline-block;
+            padding: 2px 8px;
+            background-color: #e6f2ff;
+            border-radius: 12px;
+            font-size: 0.9em;
+            margin-right: 5px;
+            cursor: default;
+        }
+        .reaction.add-reaction {
+            background-color: #d0e7ff;
+            color: #333;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.2s;
+        }
+        .reaction.add-reaction:hover {
+            background-color: #b8d8ff;
+        }
+
+        .reaction-buttons {
+            margin-top: 5px;
+        }
+
+        .reaction-buttons.hidden {
+            display: none;
+        }
+
+        .reaction-buttons button {
+            background: none;
+            border: none;
+            font-size: 1.2em;
+            cursor: pointer;
+            padding: 2px 5px;
+            border-radius: 4px;
+        }
+
+        .reaction-buttons button:hover {
+            background-color: #f0f0f0;
+        }
+
+        .toggle-reactions-btn {
+            display: block;
+            margin: 8px auto 0 auto;
+            background: #e6f2ff;
+            border: none;
+            color: #333;
+            font-size: 1em;
+            padding: 4px 14px 4px 10px;
+            border-radius: 16px;
+            cursor: pointer;
+            transition: background 0.2s;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+        }
+        .toggle-reactions-btn:hover {
+            background: #d0e7ff;
+        }
     </style>
 
     <script>
         let socket;
+
+        // Funktion zum Umschalten der Sichtbarkeit der Reaction-Buttons
+        function toggleReactionButtons(messageId) {
+            const messageElement = document.querySelector(`[data-message-id="${messageId}"]`);
+            if (messageElement) {
+                const reactionButtons = messageElement.querySelector('.reaction-buttons');
+                if (reactionButtons) {
+                    reactionButtons.classList.toggle('hidden');
+                }
+            }
+        }
 
         let createNewWebSocket = () => {
             const chatId = document.getElementById('chat_id').value;
@@ -80,9 +167,63 @@
                     // Parse the JSON message
                     const messageData = JSON.parse(event.data);
 
+                    // Skip if it's a reaction message (these are handled separately)
+                    if (messageData.type === "reaction") {
+                        // Find the message element and update its reactions
+                        const messageId = messageData.messageId;
+                        const messageElement = document.querySelector(`[data-message-id="${messageId}"]`);
+                        if (messageElement) {
+                            const reactionsElement = messageElement.querySelector('.message-reactions');
+                            if (reactionsElement) {
+                                // Add or update reaction
+                                let reactionElement = reactionsElement.querySelector(`[data-emoji="${messageData.emoji}"]`);
+                                if (!reactionElement) {
+                                    reactionElement = document.createElement('span');
+                                    reactionElement.classList.add('reaction');
+                                    reactionElement.setAttribute('data-emoji', messageData.emoji);
+                                    reactionElement.textContent = `${messageData.emoji} 1`;
+                                    // Vor dem Add-Button einfügen, falls vorhanden
+                                    const addBtn = reactionsElement.querySelector('.add-reaction');
+                                    if (addBtn) {
+                                        reactionsElement.insertBefore(reactionElement, addBtn);
+                                    } else {
+                                        reactionsElement.appendChild(reactionElement);
+                                    }
+                                } else {
+                                    // Increment the reaction count
+                                    const parts = reactionElement.textContent.split(' ');
+                                    const count = parseInt(parts[1]) + 1;
+                                    reactionElement.textContent = `${messageData.emoji} ${count}`;
+                                }
+                            }
+                        }
+                        return;
+                    }
+
+                    // Create a unique ID for the message
+                    const messageId = `${messageData.sender}-${messageData.content}`;
+
                     // Create a formatted message with sender and content
-                    const messageElement = document.createElement('p');
-                    messageElement.innerHTML = `<strong>${messageData.sender}:</strong> ${messageData.content}`;
+                    const messageElement = document.createElement('div');
+                    messageElement.classList.add('message');
+                    messageElement.setAttribute('data-message-id', messageId);
+
+                    // Nachricht mit Reaktionsleiste und Add-Button als letztes Element
+                    messageElement.innerHTML = `
+                        <p><strong>${messageData.sender}:</strong> ${messageData.content}</p>
+                        <div class="message-reactions">
+                            <span class="reaction add-reaction" onclick="toggleReactionButtons('${messageId}')">➕</span>
+                        </div>
+                        <div class="reaction-buttons hidden">
+                            <button onclick="addReaction('${messageId}', '👍')">👍</button>
+                            <button onclick="addReaction('${messageId}', '❤️')">❤️</button>
+                            <button onclick="addReaction('${messageId}', '😂')">😂</button>
+                            <button onclick="addReaction('${messageId}', '😮')">😮</button>
+                            <button onclick="addReaction('${messageId}', '😢')">😢</button>
+                            <button onclick="addReaction('${messageId}', '👏')">👏</button>
+                        </div>
+                    `;
+
                     conversation.appendChild(messageElement);
                 } catch (e) {
                     // Fallback for non-JSON messages
@@ -128,6 +269,26 @@
         let closeWebSocket = () => {
             if (socket) {
                 socket.close();
+            }
+        }
+
+        let addReaction = (messageId, emoji) => {
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                const senderInput = document.getElementById('sender') || { value: 'anonymous' };
+
+                // Create a JSON message for the reaction
+                const reactionMessage = JSON.stringify({
+                    type: "reaction",
+                    messageId: messageId,
+                    emoji: emoji,
+                    sender: senderInput.value || 'anonymous',
+                    content: "" // Content is empty for reactions
+                });
+
+                socket.send(reactionMessage);
+                console.log('Reaction sent:', reactionMessage);
+            } else {
+                console.log('Socket is not open.');
             }
         }
     </script>

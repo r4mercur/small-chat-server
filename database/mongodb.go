@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"errors"
 	"github.com/joho/godotenv"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -108,4 +109,72 @@ func GetMessages(chatID string) ([]models.Message, error) {
 	}
 
 	return chat.Messages, nil
+}
+
+// AddReaction adds an emoji reaction to a specific message
+func AddReaction(chatID string, messageID string, emoji string, username string) error {
+	ctx := context.TODO()
+
+	// Find the chat document
+	filter := map[string]interface{}{
+		"chat_id": chatID,
+	}
+
+	// Get the current chat document
+	var chat models.Chat
+	err := Collection.FindOne(ctx, filter).Decode(&chat)
+	if err != nil {
+		log.Printf("Failed to find chat for reaction: %v", err)
+		return err
+	}
+
+	// Find the message by its ID (we'll use the timestamp as the ID for simplicity)
+	messageIndex := -1
+	for i, msg := range chat.Messages {
+		if messageID == msg.Sender+"-"+msg.Content {
+			messageIndex = i
+			break
+		}
+	}
+
+	if messageIndex == -1 {
+		return errors.New("message not found")
+	}
+
+	// Initialize the reactions map if it doesn't exist
+	if chat.Messages[messageIndex].Reactions == nil {
+		chat.Messages[messageIndex].Reactions = make(map[string][]string)
+	}
+
+	// Check if user already reacted with this emoji
+	userReacted := false
+	for _, user := range chat.Messages[messageIndex].Reactions[emoji] {
+		if user == username {
+			userReacted = true
+			break
+		}
+	}
+
+	// If user hasn't reacted with this emoji yet, add the reaction
+	if !userReacted {
+		chat.Messages[messageIndex].Reactions[emoji] = append(
+			chat.Messages[messageIndex].Reactions[emoji],
+			username,
+		)
+	}
+
+	// Update the chat document in the database
+	update := map[string]interface{}{
+		"$set": map[string]interface{}{
+			"messages": chat.Messages,
+		},
+	}
+
+	_, err = Collection.UpdateOne(ctx, filter, update)
+	if err != nil {
+		log.Printf("Failed to update message with reaction: %v", err)
+		return err
+	}
+
+	return nil
 }
