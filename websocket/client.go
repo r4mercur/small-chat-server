@@ -1,6 +1,7 @@
 package websocket
 
 import (
+	"encoding/json"
 	"errors"
 	"github.com/gorilla/websocket"
 	"log"
@@ -29,6 +30,25 @@ var (
 func BroadcastMessage(chatID string, message []byte) error {
 	clientsMutex.Lock()
 	defer clientsMutex.Unlock()
+
+	// Parse the message to extract sender and content
+	// Expected format: {"sender":"username","content":"message text"}
+	var msgData struct {
+		Sender  string `json:"sender"`
+		Content string `json:"content"`
+	}
+
+	err := json.Unmarshal(message, &msgData)
+	if err != nil {
+		// If not in JSON format, treat the whole message as content with "anonymous" sender
+		msgData.Content = string(message)
+		msgData.Sender = "anonymous"
+
+		// Convert back to JSON for consistent format
+		message, _ = json.Marshal(msgData)
+	}
+
+	// Send the message to all clients
 	for client := range clients {
 		if err := client.WriteMessage(websocket.TextMessage, message); err != nil {
 			delete(clients, client)
@@ -39,7 +59,8 @@ func BroadcastMessage(chatID string, message []byte) error {
 		}
 	}
 
-	err := database.SaveMessage(chatID, string(message))
+	// Save the message to the database
+	err = database.SaveMessage(chatID, msgData.Content, msgData.Sender)
 	if err != nil {
 		log.Printf("Failed to save message: %v", err)
 		return err
@@ -70,6 +91,30 @@ func HandleConnection(w http.ResponseWriter, r *http.Request) {
 	clientsMutex.Lock()
 	clients[conn] = true
 	clientsMutex.Unlock()
+
+	// Fetch existing messages for this chat and send them to the client
+	messages, err := database.GetMessages(chatID)
+	if err != nil {
+		log.Printf("Error fetching messages: %v", err)
+	} else {
+		for _, msg := range messages {
+			// Create a JSON message with sender and content
+			jsonMsg, err := json.Marshal(map[string]string{
+				"sender":  msg.Sender,
+				"content": msg.Content,
+			})
+			if err != nil {
+				log.Printf("Error marshaling message: %v", err)
+				continue
+			}
+
+			err = conn.WriteMessage(websocket.TextMessage, jsonMsg)
+			if err != nil {
+				log.Printf("Error sending existing message: %v", err)
+				break
+			}
+		}
+	}
 
 	for {
 		_, msg, err := conn.ReadMessage()

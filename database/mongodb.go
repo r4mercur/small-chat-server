@@ -53,16 +53,59 @@ func InitCollection(err error, ctx context.Context) {
 }
 
 // SaveMessage saves a chat message to MongoDB
-func SaveMessage(chatID string, message string) error {
-	chat := models.Chat{
-		ChatID:  chatID,
-		Message: message,
+func SaveMessage(chatID string, messageContent string, sender string) error {
+	ctx := context.TODO()
+
+	// Create a new message
+	message := models.Message{
+		Sender:    sender,
+		Content:   messageContent,
+		Timestamp: time.Now().Unix(),
 	}
 
-	_, err := Collection.InsertOne(context.TODO(), chat)
+	// Check if chat exists
+	filter := map[string]interface{}{
+		"chat_id": chatID,
+	}
+
+	// Update operation to add the message to the messages array
+	update := map[string]interface{}{
+		"$push": map[string]interface{}{
+			"messages": message,
+		},
+	}
+
+	// Use upsert to create the chat if it doesn't exist
+	opts := options.Update().SetUpsert(true)
+
+	_, err := Collection.UpdateOne(ctx, filter, update, opts)
 	if err != nil {
-		log.Printf("Failed to insert chat message into MongoDB: %v", err)
+		log.Printf("Failed to save chat message to MongoDB: %v", err)
 		return err
 	}
+
 	return nil
+}
+
+// GetMessages retrieves all messages for a specific chat ID
+func GetMessages(chatID string) ([]models.Message, error) {
+	ctx := context.TODO()
+
+	filter := map[string]interface{}{
+		"chat_id": chatID,
+	}
+
+	// Find the chat document
+	var chat models.Chat
+	err := Collection.FindOne(ctx, filter).Decode(&chat)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			// No messages yet, return empty slice
+			return []models.Message{}, nil
+		}
+		log.Printf("Failed to retrieve chat from MongoDB: %v", err)
+		return nil, err
+	}
+
+	return chat.Messages, nil
 }

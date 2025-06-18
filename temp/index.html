@@ -4,11 +4,59 @@
     <meta charset="UTF-8">
     <title>Testing Chat Client Integration</title>
 
+    <style type="text/css">
+        .container {
+            display: flex;
+            height: 100vh;
+        }
+
+        .sidebar {
+            width: 20%;
+            background-color: #f0f0f0;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+
+        .content {
+            width: 80%;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+
+        .message-input {
+            position: fixed;
+            bottom: 0;
+            width: 100%;
+            margin: 10px;
+            padding: 10px;
+        }
+
+        .message-input input {
+            width: 65%;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+
+        .message-input button {
+            width: 10%;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+
+        .hidden {
+            display: none;
+        }
+    </style>
+
     <script>
         let socket;
 
         let createNewWebSocket = () => {
             const chatId = document.getElementById('chat_id').value;
+            const conversation = document.querySelector('.conversation');
+            const conversationList = document.querySelector('.conversation-list');
+            const connectionPanel = document.querySelector('.connection-panel');
+            const closeBtn = document.getElementById('closeBtn');
 
             if (!chatId) {
                 console.log('Chat ID is required to connect.');
@@ -21,14 +69,34 @@
 
             socket.onopen = () => {
                 console.log('Socket opened');
+                conversationList.innerHTML = `<p>Connected to chat ID: ${chatId}</p>`;
+                connectionPanel.classList.add('hidden');
+                closeBtn.classList.remove('hidden');
             }
 
             socket.onmessage = (event) => {
                 console.log(event.data);
+                try {
+                    // Parse the JSON message
+                    const messageData = JSON.parse(event.data);
+
+                    // Create a formatted message with sender and content
+                    const messageElement = document.createElement('p');
+                    messageElement.innerHTML = `<strong>${messageData.sender}:</strong> ${messageData.content}`;
+                    conversation.appendChild(messageElement);
+                } catch (e) {
+                    // Fallback for non-JSON messages
+                    const messageElement = document.createElement('p');
+                    messageElement.textContent = event.data;
+                    conversation.appendChild(messageElement);
+                }
             }
 
             socket.onclose = () => {
                 console.log("Socket closed");
+                conversationList.innerHTML += `<p>Connection closed.</p>`;
+                connectionPanel.classList.remove('hidden');
+                closeBtn.classList.add('hidden');
             }
 
             socket.onerror = (error) => {
@@ -39,25 +107,62 @@
         let sendMessage = () => {
             const messageInput = document.getElementById('message');
             const message = messageInput.value;
+            const senderInput = document.getElementById('sender') || { value: 'anonymous' };
+
             if (socket && socket.readyState === WebSocket.OPEN) {
-                socket.send(message);
-                console.log('Message sent:', message);
+                // Create a JSON message with sender and content
+                const jsonMessage = JSON.stringify({
+                    sender: senderInput.value || 'anonymous',
+                    content: message
+                });
+
+                socket.send(jsonMessage);
+                console.log('Message sent:', jsonMessage);
             } else {
                 console.log('Socket is not open.');
+            }
+
+            messageInput.value = '';
+        }
+
+        let closeWebSocket = () => {
+            if (socket) {
+                socket.close();
             }
         }
     </script>
 </head>
 <body>
-    <div>
-        <h2>Small chat integration test</h2>
-        <label for="chat_id">Chat-ID:</label>
-        <input type="text" id="chat_id" placeholder="Chat-ID..." />
-        <button onclick="createNewWebSocket()">Connect</button>
 
-        <label for="message">Message:</label>
-        <input type="text" id="message" placeholder="Type your message here..." />
-        <button onclick="sendMessage()">Send</button>
+    <div class="container">
+        <div class="sidebar">
+            <h2>Small chat integration test</h2>
+
+            <div class="conversation-list">
+                <p>Chat conversations will be listed here...</p>
+
+                <div class="connection-panel">
+                    <label for="chat_id">Chat-ID:</label>
+                    <input type="text" id="chat_id" placeholder="Chat-ID..." />
+                    <button onclick="createNewWebSocket()">Connect</button>
+                </div>
+            </div>
+
+            <button id="closeBtn" class="hidden" onclick="closeWebSocket()">Close Connection</button>
+        </div>
+
+        <div class="content">
+            <div class="conversation">
+
+            </div>
+
+            <div class="message-input">
+                <input type="text" id="sender" placeholder="Your name..." style="width: 20%;" />
+                <input type="text" id="message" placeholder="Type your message here..." style="width: 45%;" />
+                <button onclick="sendMessage()">Send</button>
+            </div>
+        </div>
     </div>
+
 </body>
 </html>
